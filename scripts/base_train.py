@@ -32,6 +32,8 @@ print_banner()
 # -----------------------------------------------------------------------------
 # User settings
 run = "dummy" # wandb run name default ("dummy" is special - we won't log to wandb)
+checkpoint_every = 10 # how often to save checkpoints (in steps, -1 = disable)
+resume_from_step = None # step to resume from (e.g. 1000) (None = disable)
 # Runtime
 device_type = "" # cuda|cpu|mps (empty => autodetect good device type default, in order: CUDA > MPS > CPU)
 # Model architecture
@@ -106,13 +108,21 @@ print0(f"Total batch size {total_batch_size:,} => gradient accumulation steps: {
 # -----------------------------------------------------------------------------
 # Initialize the Model
 model_config_kwargs = dict(sequence_len=max_seq_len, vocab_size=vocab_size, n_layer=num_layers, n_head=num_heads, n_kv_head=num_kv_heads, n_embd=model_dim)
-with torch.device("meta"):
-    model_config = GPTConfig(**model_config_kwargs)
-    model = GPT(model_config)
-model.to_empty(device=device)
-model.init_weights()
+
+if resume_from_step is not None:
+    model, tokenizer, meta = load_model("base", device, phase="train", model_tag=model_tag, step=resume_from_step)
+    start_step = meta["step"] + 1
+    print0(f"Resumed from step {meta['step']:}")
+else:
+    with torch.device("meta"):
+        model_config = GPTConfig(**model_config_kwargs)
+        model = GPT(model_config)
+    model.to_empty(device=device)
+    model.init_weights()
+    start_step = 0
 orig_model = model # original, uncompiled model, for saving raw model state_dict
 model = torch.compile(model, dynamic=False) # TODO: dynamic True/False think through
+
 num_params = sum(p.numel() for p in model.parameters())
 print0(f"Number of parameters: {num_params:,}")
 num_flops_per_token = model.estimate_flops()
@@ -148,8 +158,15 @@ base_dir = get_base_dir()
 tokens_dir = os.path.join(base_dir, "tokenized_data")
 train_loader = tokenizing_distributed_data_loader(device_batch_size, max_seq_len, split="train", device=device)
 build_val_loader = lambda: tokenizing_distributed_data_loader(device_batch_size, max_seq_len, split="val", device=device)
-x, y = next(train_loader) # kick off load of the very first batch of data
 
+if start_step > 0:
+    for _ in range(start_step):
+        # this is sort of wasteful, but it allows us to keep the data loading code simple
+        # and not have to worry about seeking in the data files or anything like that. 
+        # We just iterate through the batches until we reach the desired start step.
+        x, y = next(train_loader)
+else:
+    x, y = next(train_loader) # kick off load of the very first batch of data
 # -----------------------------------------------------------------------------
 # Set up hyperparameter schedulers
 
@@ -178,9 +195,11 @@ smooth_train_loss = 0 # EMA of training loss
 ema_beta = 0.9 # EMA decay factor
 total_training_time = 0 # total wall-clock time of training
 # note that we run +1 steps only so that we can eval and save at the end
-for step in range(num_iterations + 1):
+for step in range(start_step, num_iterations + 1):
     last_step = step == num_iterations
     flops_so_far = num_flops_per_token * total_batch_size * step
+
+    val_bpb = None
 
     # once in a while: evaluate the val bpb (all ranks participate)
     if last_step or step % eval_every == 0:
@@ -238,9 +257,10 @@ for step in range(num_iterations + 1):
         model.train()
 
     # save checkpoint at the end of the run (only on master process)
-    if master_process and last_step:
+    if master_process and (last_step or (checkpoint_every > 0 and step > 0 and step % checkpoint_every == 0)) and step != start_step:
         output_dirname = model_tag if model_tag else f"d{depth}" # e.g. d12
         checkpoint_dir = os.path.join(base_dir, "base_checkpoints", output_dirname)
+
         save_checkpoint(
             checkpoint_dir,
             step,
