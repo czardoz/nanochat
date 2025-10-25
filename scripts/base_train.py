@@ -32,7 +32,7 @@ print_banner()
 # -----------------------------------------------------------------------------
 # User settings
 run = "dummy" # wandb run name default ("dummy" is special - we won't log to wandb)
-checkpoint_every = 10 # how often to save checkpoints (in steps, -1 = disable)
+checkpoint_every = 1500 # how often to save checkpoints (in steps, -1 = disable)
 resume_from_step = None # step to resume from (e.g. 1000) (None = disable)
 # Runtime
 device_type = "" # cuda|cpu|mps (empty => autodetect good device type default, in order: CUDA > MPS > CPU)
