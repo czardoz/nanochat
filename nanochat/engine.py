@@ -326,7 +326,7 @@ if __name__ == "__main__":
     # init compute
     ddp, ddp_rank, ddp_local_rank, ddp_world_size, device = compute_init()
     # load the model and tokenizer
-    model, tokenizer, meta = load_model("base", device, phase="eval")
+    model, tokenizer, meta, _ = load_model("base", device, phase="eval")
     bos_token_id = tokenizer.get_bos_token_id()
     # common hyperparameters
     kwargs = dict(max_tokens=64, temperature=0.0)

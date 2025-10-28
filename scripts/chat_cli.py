@@ -28,7 +28,7 @@ device_type = autodetect_device_type() if args.device_type == "" else args.devic
 ddp, ddp_rank, ddp_local_rank, ddp_world_size, device = compute_init(device_type)
 ptdtype = torch.float32 if args.dtype == 'float32' else torch.bfloat16
 autocast_ctx = torch.amp.autocast(device_type=device_type, dtype=ptdtype) if device_type == "cuda" else nullcontext()
-model, tokenizer, meta = load_model(args.source, device, phase="eval", model_tag=args.model_tag, step=args.step)
+model, tokenizer, meta, _ = load_model(args.source, device, phase="eval", model_tag=args.model_tag, step=args.step)
 
 # Special tokens for the chat state machine
 bos = tokenizer.get_bos_token_id()

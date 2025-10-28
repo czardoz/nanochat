@@ -202,7 +202,7 @@ if __name__ == "__main__":
     ptdtype = torch.float32 if args.dtype == 'float32' else torch.bfloat16
     autocast_ctx = torch.amp.autocast(device_type=device_type, dtype=ptdtype) if device_type == "cuda" else nullcontext()
 
-    model, tokenizer, meta = load_model(args.source, device, phase="eval", model_tag=args.model_tag, step=args.step)
+    model, tokenizer, meta, _ = load_model(args.source, device, phase="eval", model_tag=args.model_tag, step=args.step)
     engine = Engine(model, tokenizer)
 
     # Get the tasks to evaluate on

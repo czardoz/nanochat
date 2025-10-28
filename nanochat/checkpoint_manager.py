@@ -55,16 +55,17 @@ def load_checkpoint(checkpoint_dir, step, device, load_optimizer=False):
     return model_data, optimizer_data, meta_data
 
 
-def build_model(checkpoint_dir, step, device, phase):
+def build_model(checkpoint_dir, step, device, phase, load_optimizer=False):
     """
     A bunch of repetitive code to build a model from a given checkpoint.
     Returns:
     - base model - uncompiled, not wrapped in DDP
     - tokenizer
     - meta data saved during base model training
+    - optimizer state (optional)
     """
     assert phase in ["train", "eval"], f"Invalid phase: {phase}"
-    model_data, optimizer_data, meta_data = load_checkpoint(checkpoint_dir, step, device, load_optimizer=False)
+    model_data, optimizer_data, meta_data = load_checkpoint(checkpoint_dir, step, device, load_optimizer=load_optimizer)
     # Hack: fix torch compile issue, which prepends all keys with _orig_mod.
     model_data = {k.lstrip("_orig_mod."): v for k, v in model_data.items()}
     model_config_kwargs = meta_data["model_config"]
@@ -85,7 +86,7 @@ def build_model(checkpoint_dir, step, device, phase):
     tokenizer = get_tokenizer()
     # Sanity check: compatibility between model and tokenizer
     assert tokenizer.get_vocab_size() == model_config_kwargs["vocab_size"]
-    return model, tokenizer, meta_data
+    return model, tokenizer, meta_data, optimizer_data
 
 
 def find_largest_model(checkpoint_dir):
@@ -119,7 +120,7 @@ def find_last_step(checkpoint_dir):
 # -----------------------------------------------------------------------------
 # convenience functions that take into account nanochat's directory structure
 
-def load_model_from_dir(checkpoints_dir, device, phase, model_tag=None, step=None):
+def load_model_from_dir(checkpoints_dir, device, phase, model_tag=None, step=None, load_optimizer=False):
     if model_tag is None:
         # guess the model tag by defaulting to the largest model
         model_tag = find_largest_model(checkpoints_dir)
@@ -131,10 +132,12 @@ def load_model_from_dir(checkpoints_dir, device, phase, model_tag=None, step=Non
     assert step is not None, f"No checkpoints found in {checkpoint_dir}"
     # build the model
     log0(f"Loading model from {checkpoint_dir} with step {step}")
-    model, tokenizer, meta_data = build_model(checkpoint_dir, step, device, phase)
-    return model, tokenizer, meta_data
+    model, tokenizer, meta_data, optimizer_data = build_model(checkpoint_dir, step, device, phase, load_optimizer=load_optimizer)
+    if load_optimizer:
+        return model, tokenizer, meta_data, optimizer_data
+    return model, tokenizer, meta_data, None
 
-def load_model(source, *args, **kwargs):
+def load_model(source, *args, load_optimizer=False, **kwargs):
     model_dir = {
         "base": "base_checkpoints",
         "mid": "mid_checkpoints",
@@ -143,4 +146,4 @@ def load_model(source, *args, **kwargs):
     }[source]
     base_dir = get_base_dir()
     checkpoints_dir = os.path.join(base_dir, model_dir)
-    return load_model_from_dir(checkpoints_dir, *args, **kwargs)
+    return load_model_from_dir(checkpoints_dir, *args, load_optimizer=load_optimizer, **kwargs)

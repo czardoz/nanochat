@@ -140,7 +140,7 @@ def main():
         model_slug = hf_path.replace("/", "-") # for the output csv file
     else:
         # load a local model from the file system
-        model, tokenizer, meta = load_model("base", device, phase="eval")
+        model, tokenizer, meta, _ = load_model("base", device, phase="eval")
         model_name = f"base_model (step {meta['step']})" # just for logging
         model_slug = f"base_model_{meta['step']:06d}" # for the output csv file
 

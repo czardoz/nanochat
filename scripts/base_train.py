@@ -23,7 +23,7 @@ from nanochat.gpt import GPT, GPTConfig
 from nanochat.dataloader import tokenizing_distributed_data_loader
 from nanochat.common import compute_init, compute_cleanup, print0, DummyWandb, print_banner, get_base_dir, autodetect_device_type
 from nanochat.tokenizer import get_tokenizer, get_token_bytes
-from nanochat.checkpoint_manager import save_checkpoint
+from nanochat.checkpoint_manager import save_checkpoint, load_model
 from nanochat.loss_eval import evaluate_bpb
 from nanochat.engine import Engine
 from scripts.base_eval import evaluate_model
@@ -109,10 +109,18 @@ print0(f"Total batch size {total_batch_size:,} => gradient accumulation steps: {
 # Initialize the Model
 model_config_kwargs = dict(sequence_len=max_seq_len, vocab_size=vocab_size, n_layer=num_layers, n_head=num_heads, n_kv_head=num_kv_heads, n_embd=model_dim)
 
+loaded_optimizer_states = None
 if resume_from_step is not None:
-    model, tokenizer, meta = load_model("base", device, phase="train", model_tag=model_tag, step=resume_from_step)
+    model, tokenizer, meta, loaded_optimizer_states = load_model(
+        "base",
+        device,
+        phase="train",
+        model_tag=model_tag,
+        step=resume_from_step,
+        load_optimizer=True,
+    )
     start_step = meta["step"] + 1
-    print0(f"Resumed from step {meta['step']:}")
+    print0(f"Resumed from step {meta['step']}")
 else:
     with torch.device("meta"):
         model_config = GPTConfig(**model_config_kwargs)
@@ -152,6 +160,10 @@ print0(f"Total training FLOPs estimate: {num_flops_per_token * total_tokens:e}")
 # Initialize the Optimizer (Muon for Linear layers, AdamW for embedding and lm_head)
 optimizers = model.setup_optimizers(unembedding_lr=unembedding_lr, embedding_lr=embedding_lr, matrix_lr=matrix_lr, weight_decay=weight_decay)
 adamw_optimizer, muon_optimizer = optimizers
+if loaded_optimizer_states is not None:
+    assert len(loaded_optimizer_states) == len(optimizers), "Mismatch in number of optimizer states when resuming"
+    for opt, state in zip(optimizers, loaded_optimizer_states):
+        opt.load_state_dict(state)
 
 # Initialize the DataLoaders for train/val
 base_dir = get_base_dir()

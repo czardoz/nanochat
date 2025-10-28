@@ -66,7 +66,7 @@ use_dummy_wandb = run == "dummy" or not master_process
 wandb_run = DummyWandb() if use_dummy_wandb else wandb.init(project="nanochat-mid", name=run, config=user_config)
 
 # Load the model and tokenizer
-model, tokenizer, meta = load_model("base", device, phase="train", model_tag=model_tag, step=step)
+model, tokenizer, meta, _ = load_model("base", device, phase="train", model_tag=model_tag, step=step)
 pretrain_batch_size = meta.get("device_batch_size", None)
 if pretrain_batch_size is not None and device_batch_size > pretrain_batch_size:
     print0(f"FOOTGUN WARNING: base model training used device_batch_size {pretrain_batch_size}, did you pass in a good --device_batch_size to this script?")
